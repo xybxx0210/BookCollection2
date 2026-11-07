@@ -15,3 +15,5 @@ dependencyResolutionManagement {
         maven("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
     }
 }
+rootProject.name = "BookCollection2"
+include(":app")
