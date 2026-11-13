@@ -57,6 +57,26 @@ class ScanFragment : Fragment(R.layout.fragment_scan) {
         } else {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
+
+        // ========= 第6步测试跳转代码（直接加在这里） =========
+        tvResult.setOnClickListener {
+            // 打印日志和弹窗，证明点上了
+            android.util.Log.d("CLICK_TEST", "文字被点击了！")
+            android.widget.Toast.makeText(requireContext(), "触发跳转测试！", android.widget.Toast.LENGTH_SHORT).show()
+
+            // 构造假数据，直接跳转到详情页
+            val intent = android.content.Intent(requireContext(), com.example.bookcollection.ui.BookDetailActivity::class.java)
+            intent.putExtra("isbn", "9787115442000")
+            intent.putExtra("title", "第一行代码 (第3版)")
+            intent.putExtra("author", "郭霖")
+            intent.putExtra("publisher", "人民邮电出版社")
+            intent.putExtra("coverUrl", "") // 封面留空，详情页会显示默认图标
+            intent.putExtra("totalPages", 500)
+
+            // 起飞！
+            startActivity(intent)
+        }
+        // ===================================================
     }
 
     private fun startCamera() {
