@@ -17,10 +17,14 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.bookcollection.R
+import com.example.bookcollection.data.network.NetworkModule
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 class ScanFragment : Fragment(R.layout.fragment_scan) {
@@ -72,10 +76,42 @@ class ScanFragment : Fragment(R.layout.fragment_scan) {
                 .build()
 
             imageAnalysis.setAnalyzer(cameraExecutor, BarcodeAnalyzer { isbn ->
-                // 扫码成功回调（UI线程更新）
+                // 扫码成功回调（UI线程更新状态）
                 requireActivity().runOnUiThread {
-                    tvResult.text = "扫描结果: $isbn"
+                    tvResult.text = "正在获取图书信息: $isbn"
                 }
+
+                // =========== 第5步：发起网络请求 ===========
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val response = NetworkModule.googleBooksApi.searchBookByIsbn(isbn)
+                        val book = response.items?.firstOrNull()?.volumeInfo
+
+                        if (book != null) {
+                            val title = book.title ?: "未知书名"
+                            val author = book.authors?.joinToString(", ") ?: "未知作者"
+                            val publisher = book.publisher ?: "未知出版社"
+
+                            // 打印到 Logcat 验收
+                            Log.d("API_TEST", "获取成功！")
+                            Log.d("API_TEST", "书名: $title")
+                            Log.d("API_TEST", "作者: $author")
+                            Log.d("API_TEST", "出版社: $publisher")
+                            Log.d("API_TEST", "封面: ${book.imageLinks?.thumbnail}")
+
+                            // 更新到界面上
+                            requireActivity().runOnUiThread {
+                                tvResult.text = "书名: $title\n作者: $author\n出版社: $publisher"
+                            }
+                        } else {
+                            requireActivity().runOnUiThread { tvResult.text = "未查到该图书信息" }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("API_TEST", "网络请求失败: ${e.message}")
+                        requireActivity().runOnUiThread { tvResult.text = "网络异常，请重试" }
+                    }
+                }
+                // =========================================
             })
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
