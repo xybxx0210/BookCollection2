@@ -1,9 +1,12 @@
 package com.example.bookcollection.ui
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -18,6 +21,10 @@ class BookDetailActivity : AppCompatActivity() {
 
     private var currentBookId: Long = 0L
     private lateinit var db: AppDatabase
+    private lateinit var progressBar: ProgressBar
+    private lateinit var tvProgressPercent: TextView
+    private lateinit var etTotalPages: EditText
+    private lateinit var etReadPages: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,17 +36,30 @@ class BookDetailActivity : AppCompatActivity() {
         val tvTitle = findViewById<TextView>(R.id.tvTitle)
         val tvAuthor = findViewById<TextView>(R.id.tvAuthor)
         val tvPublisher = findViewById<TextView>(R.id.tvPublisher)
-        val etTotalPages = findViewById<EditText>(R.id.etTotalPages)
-        val etReadPages = findViewById<EditText>(R.id.etReadPages)
+        etTotalPages = findViewById(R.id.etTotalPages)
+        etReadPages = findViewById(R.id.etReadPages)
+        progressBar = findViewById(R.id.progressBar)
+        tvProgressPercent = findViewById(R.id.tvProgressPercent)
         val btnSaveProgress = findViewById<Button>(R.id.btnSaveProgress)
+        val btnResetProgress = findViewById<Button>(R.id.btnResetProgress)
         val btnCollect = findViewById<Button>(R.id.btnCollect)
 
-        // 接收传过来的 bookId
+        // 监听输入框变化，实时更新进度条
+        val textWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                updateProgressBar()
+            }
+        }
+        etTotalPages.addTextChangedListener(textWatcher)
+        etReadPages.addTextChangedListener(textWatcher)
+
         currentBookId = intent.getLongExtra("bookId", 0L)
 
         if (currentBookId > 0L) {
             // ===== 从书架进来的：读数据库 =====
-            btnCollect.visibility = android.view.View.GONE // 已经收藏了，隐藏按钮
+            btnCollect.visibility = android.view.View.GONE
             lifecycleScope.launch {
                 val book = db.bookDao().getById(currentBookId)
                 if (book != null) {
@@ -73,7 +93,6 @@ class BookDetailActivity : AppCompatActivity() {
                 Glide.with(this).load(coverUrl).placeholder(R.mipmap.ic_launcher).into(ivCover)
             }
 
-            // 扫码进来的，点击加入书架
             btnCollect.setOnClickListener {
                 lifecycleScope.launch {
                     val newBook = BookEntity(
@@ -106,17 +125,14 @@ class BookDetailActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // 如果是扫码刚进来的，还没入库（currentBookId == 0），先存一遍再更新
             lifecycleScope.launch {
                 if (currentBookId > 0L) {
-                    // 已经存在的书，直接更新
                     val book = db.bookDao().getById(currentBookId)
                     if (book != null) {
                         db.bookDao().update(book.copy(totalPages = total, readPages = read))
                         Toast.makeText(this@BookDetailActivity, "进度已保存", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    // 如果是扫描进来的新书，先插入，拿到 id
                     val newBook = BookEntity(
                         isbn = intent.getStringExtra("isbn"),
                         title = tvTitle.text.toString(),
@@ -128,14 +144,42 @@ class BookDetailActivity : AppCompatActivity() {
                     )
                     val newId = db.bookDao().insert(newBook)
                     if (newId != -1L) {
-                        currentBookId = newId // 更新当前 ID
-                        btnCollect.visibility = android.view.View.GONE // 已经加入了，隐藏按钮
+                        currentBookId = newId
+                        btnCollect.visibility = android.view.View.GONE
                         Toast.makeText(this@BookDetailActivity, "已加入书架并保存进度", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this@BookDetailActivity, "保存失败，书可能已存在", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
+        }
+
+        // ===== 重置进度逻辑 =====
+        btnResetProgress.setOnClickListener {
+            etReadPages.setText("0")
+            progressBar.progress = 0
+            tvProgressPercent.text = "阅读进度: 0%"
+            Toast.makeText(this, "已重置为 0", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // 计算并更新进度条
+    private fun updateProgressBar() {
+        val totalStr = etTotalPages.text.toString()
+        val readStr = etReadPages.text.toString()
+
+        val total = if (totalStr.isEmpty()) 0 else totalStr.toIntOrNull() ?: 0
+        val read = if (readStr.isEmpty()) 0 else readStr.toIntOrNull() ?: 0
+
+        if (total > 0) {
+            var percent = (read * 100) / total
+            if (percent > 100) percent = 100 // 防止超过100%
+
+            progressBar.progress = percent
+            tvProgressPercent.text = "阅读进度: $percent%"
+        } else {
+            progressBar.progress = 0
+            tvProgressPercent.text = "阅读进度: 0%"
         }
     }
 }
