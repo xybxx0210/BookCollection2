@@ -29,4 +29,18 @@ interface BookDao {
 
     @Query("UPDATE books SET readPages = :readPages WHERE id = :bookId")
     suspend fun updateProgress(bookId: Long, readPages: Int)
-}
+    // ===== 标签绑定相关（第11步） =====
+
+    // 绑定标签
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun bindTag(crossRef: com.example.bookcollection.data.local.entity.BookTagCrossRef)
+
+    // 解绑标签
+    @Query("DELETE FROM book_tag_cross_ref WHERE bookId = :bookId AND tagId = :tagId")
+    suspend fun unbindTag(bookId: Long, tagId: Long)
+
+    // 查询某本书绑定了哪些标签ID
+    @Query("SELECT tagId FROM book_tag_cross_ref WHERE bookId = :bookId")
+    suspend fun getBoundTagIds(bookId: Long): List<Long>
+
+} // 👈 就是这个大括号！它是用来闭合最上面的 interface BookDao { 的
