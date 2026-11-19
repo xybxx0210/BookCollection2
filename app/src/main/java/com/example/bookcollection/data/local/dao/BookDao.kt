@@ -42,5 +42,7 @@ interface BookDao {
     // 查询某本书绑定了哪些标签ID
     @Query("SELECT tagId FROM book_tag_cross_ref WHERE bookId = :bookId")
     suspend fun getBoundTagIds(bookId: Long): List<Long>
-
+    // 根据标签ID查询图书列表（联表查询）
+    @Query("SELECT b.* FROM books b INNER JOIN book_tag_cross_ref r ON b.id = r.bookId WHERE r.tagId = :tagId ORDER BY b.createdAt DESC")
+    fun observeBooksByTag(tagId: Long): Flow<List<BookEntity>>
 } // 👈 就是这个大括号！它是用来闭合最上面的 interface BookDao { 的
