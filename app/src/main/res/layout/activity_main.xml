@@ -11,10 +11,12 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
+    <!-- 菜单里没有放图标，所以强制显示文字，否则未选中的项会变成空白 -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav_menu" />
 
 </LinearLayout>

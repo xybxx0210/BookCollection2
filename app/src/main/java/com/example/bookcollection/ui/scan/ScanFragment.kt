@@ -2,6 +2,7 @@ package com.example.bookcollection.ui.scan
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -16,31 +17,47 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.example.bookcollection.R
-import com.example.bookcollection.data.network.NetworkModule
+import com.example.bookcollection.data.repository.BookLookupResult
+import com.example.bookcollection.data.repository.BookRepository
+import com.example.bookcollection.ui.BookDetailActivity
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
+/**
+ * 扫码页：扫到书背面的 ISBN 条码 → 联网查书 → 打开详情页确认加入书架。
+ */
 class ScanFragment : Fragment(R.layout.fragment_scan) {
 
     private lateinit var viewFinder: PreviewView
     private lateinit var tvResult: TextView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
+    private val repository by lazy { BookRepository() }
 
-    // 请求相机权限
+    private val scanner: BarcodeScanner by lazy {
+        BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8)
+                .build()
+        )
+    }
+
+    /** 防止条码每一帧都触发一次网络请求 */
+    private var isLookingUp = false
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             startCamera()
-        } else {
-            tvResult.text = "未获得相机权限，无法扫码"
+        } else if (isAdded) {
+            tvResult.text = "未获得相机权限，无法扫码\n（点这里可以用测试 ISBN 体验）"
         }
     }
 
@@ -49,7 +66,11 @@ class ScanFragment : Fragment(R.layout.fragment_scan) {
         viewFinder = view.findViewById(R.id.viewFinder)
         tvResult = view.findViewById(R.id.tvResult)
 
-        // 检查权限
+        // 没有相机时，点文字用《三体》的 ISBN 走一遍完整流程
+        tvResult.setOnClickListener {
+            lookupByIsbn("9787536692930")
+        }
+
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) {
@@ -57,124 +78,120 @@ class ScanFragment : Fragment(R.layout.fragment_scan) {
         } else {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
-
-        // ========= 第6步测试跳转代码（直接加在这里） =========
-        tvResult.setOnClickListener {
-            // 打印日志和弹窗，证明点上了
-            android.util.Log.d("CLICK_TEST", "文字被点击了！")
-            android.widget.Toast.makeText(requireContext(), "触发跳转测试！", android.widget.Toast.LENGTH_SHORT).show()
-
-            // 构造假数据，直接跳转到详情页
-            val intent = android.content.Intent(requireContext(), com.example.bookcollection.ui.BookDetailActivity::class.java)
-            intent.putExtra("isbn", "9787115442000")
-            intent.putExtra("title", "第一行代码 (第3版)")
-            intent.putExtra("author", "郭霖")
-            intent.putExtra("publisher", "人民邮电出版社")
-            intent.putExtra("coverUrl", "") // 封面留空，详情页会显示默认图标
-            intent.putExtra("totalPages", 500)
-
-            // 起飞！
-            startActivity(intent)
-        }
-        // ===================================================
     }
 
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
 
         cameraProviderFuture.addListener({
+            if (!isAdded) return@addListener
+
             val cameraProvider = cameraProviderFuture.get()
 
-            // 预览
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(viewFinder.surfaceProvider)
             }
 
-            // 图像分析（扫码）
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
 
-            imageAnalysis.setAnalyzer(cameraExecutor, BarcodeAnalyzer { isbn ->
-                // 扫码成功回调（UI线程更新状态）
-                requireActivity().runOnUiThread {
-                    tvResult.text = "正在获取图书信息: $isbn"
-                }
-
-                // =========== 第5步：发起网络请求 ===========
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
-                        val response = NetworkModule.googleBooksApi.searchBookByIsbn(isbn)
-                        val book = response.items?.firstOrNull()?.volumeInfo
-
-                        if (book != null) {
-                            val title = book.title ?: "未知书名"
-                            val author = book.authors?.joinToString(", ") ?: "未知作者"
-                            val publisher = book.publisher ?: "未知出版社"
-
-                            // 打印到 Logcat 验收
-                            Log.d("API_TEST", "获取成功！")
-                            Log.d("API_TEST", "书名: $title")
-                            Log.d("API_TEST", "作者: $author")
-                            Log.d("API_TEST", "出版社: $publisher")
-                            Log.d("API_TEST", "封面: ${book.imageLinks?.thumbnail}")
-
-                            // 更新到界面上
-                            requireActivity().runOnUiThread {
-                                tvResult.text = "书名: $title\n作者: $author\n出版社: $publisher"
-                            }
-                        } else {
-                            requireActivity().runOnUiThread { tvResult.text = "未查到该图书信息" }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("API_TEST", "网络请求失败: ${e.message}")
-                        requireActivity().runOnUiThread { tvResult.text = "网络异常，请重试" }
-                    }
-                }
-                // =========================================
-            })
-
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                analyzeBarcode(imageProxy)
+            }
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+                cameraProvider.bindToLifecycle(
+                    this,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    imageAnalysis
+                )
             } catch (exc: Exception) {
-                Log.e("ScanFragment", "绑定相机失败", exc)
+                Log.e(TAG, "绑定相机失败", exc)
+                tvResult.text = "相机启动失败：${exc.message}"
             }
-
         }, ContextCompat.getMainExecutor(requireContext()))
     }
 
-    // 内部类：处理图片识别条码
-    private class BarcodeAnalyzer(private val onBarcodeDetected: (String) -> Unit) : ImageAnalysis.Analyzer {
-        private val scanner = BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8).build()
-        )
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun analyzeBarcode(imageProxy: ImageProxy) {
+        val mediaImage = imageProxy.image
+        if (mediaImage == null) {
+            imageProxy.close()
+            return
+        }
 
-        @SuppressLint("UnsafeOptInUsageError")
-        override fun analyze(imageProxy: ImageProxy) {
-            val mediaImage = imageProxy.image
-            if (mediaImage != null) {
-                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                scanner.process(image)
-                    .addOnSuccessListener { barcodes ->
-                        for (barcode in barcodes) {
-                            barcode.rawValue?.let { isbn ->
-                                onBarcodeDetected(isbn)
-                            }
+        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+        scanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                val isbn = barcodes.firstNotNullOfOrNull { it.rawValue }
+                if (isbn != null && !isLookingUp) {
+                    activity?.runOnUiThread { lookupByIsbn(isbn) }
+                }
+            }
+            .addOnFailureListener { Log.e(TAG, "条码识别失败", it) }
+            .addOnCompleteListener { imageProxy.close() }
+    }
+
+    // ==================== 联网查书 ====================
+
+    private fun lookupByIsbn(isbn: String) {
+        if (isLookingUp) return
+
+        isLookingUp = true
+        tvResult.text = "已识别 ISBN：$isbn\n正在联网查询图书信息…"
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            when (val result = repository.lookupByIsbn(isbn)) {
+                is BookLookupResult.Success -> {
+                    val book = result.book
+                    tvResult.text = "找到《${book.title}》，正在打开详情…"
+                    startActivity(
+                        Intent(requireContext(), BookDetailActivity::class.java).apply {
+                            putExtra(BookDetailActivity.EXTRA_ISBN, book.isbn ?: isbn)
+                            putExtra(BookDetailActivity.EXTRA_TITLE, book.title)
+                            putExtra(BookDetailActivity.EXTRA_AUTHOR, book.author)
+                            putExtra(BookDetailActivity.EXTRA_PUBLISHER, book.publisher)
+                            putExtra(BookDetailActivity.EXTRA_COVER_URL, book.coverUrl)
+                            putExtra(BookDetailActivity.EXTRA_TOTAL_PAGES, book.totalPages)
                         }
-                    }
-                    .addOnFailureListener { Log.e("ScanFragment", "扫描失败", it) }
-                    .addOnCompleteListener { imageProxy.close() }
-            } else {
-                imageProxy.close()
+                    )
+                }
+
+                is BookLookupResult.NotFound -> {
+                    isLookingUp = false
+                    tvResult.text = "${result.message}\n换个角度再扫试试～"
+                }
+
+                is BookLookupResult.Failure -> {
+                    isLookingUp = false
+                    tvResult.text = "${result.message}\n请检查网络后重试"
+                }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从详情页返回后允许重新扫码
+        isLookingUp = false
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        // 相机跟着 Fragment 生命周期解绑
+        ProcessCameraProvider.getInstance(requireContext()).get().unbindAll()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+        scanner.close()
+    }
+
+    companion object {
+        private const val TAG = "ScanFragment"
     }
 }

@@ -6,9 +6,9 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
 import com.example.bookcollection.R
 import com.example.bookcollection.data.local.entity.BookEntity
+import com.example.bookcollection.ui.common.CoverLoader
 
 class BookAdapter : RecyclerView.Adapter<BookAdapter.BookViewHolder>() {
 
@@ -55,14 +55,7 @@ class BookAdapter : RecyclerView.Adapter<BookAdapter.BookViewHolder>() {
             tvTitle.text = book.title
             tvAuthor.text = book.author ?: "未知作者"
 
-            if (!book.coverUrl.isNullOrEmpty()) {
-                Glide.with(itemView.context)
-                    .load(book.coverUrl)
-                    .placeholder(R.mipmap.ic_launcher)
-                    .into(ivCover)
-            } else {
-                ivCover.setImageResource(R.mipmap.ic_launcher)
-            }
+            CoverLoader.load(ivCover, book.coverUrl)
         }
     }
 }
