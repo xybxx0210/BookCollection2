@@ -132,6 +132,14 @@ class BookShelfFragment : Fragment(R.layout.fragment_bookshelf) {
                     }
                 }
                 adapter.submitList(filteredList)
+
+                // 动态显示空状态
+                val layoutEmpty = view?.findViewById<View>(R.id.layoutEmpty)
+                if (filteredList.isEmpty()) {
+                    layoutEmpty?.visibility = View.VISIBLE
+                } else {
+                    layoutEmpty?.visibility = View.GONE
+                }
             }
         }
     }
