@@ -5,19 +5,30 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <!-- 顶部筛选标签栏（横向滑动） -->
+    <!-- 搜索框 -->
+    <EditText
+        android:id="@+id/etSearch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="搜索书名或作者..."
+        android:padding="12dp"
+        android:background="@android:drawable/editbox_background"
+        android:layout_margin="8dp"
+        android:inputType="text"
+        android:maxLines="1" />
+
+    <!-- 顶部筛选标签栏 -->
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:scrollbars="none"
-        android:padding="8dp">
+        android:paddingHorizontal="8dp">
 
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/chipGroupFilter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:singleSelection="true" /> <!-- 只能单选 -->
-
+            app:singleSelection="true" />
     </HorizontalScrollView>
 
     <View

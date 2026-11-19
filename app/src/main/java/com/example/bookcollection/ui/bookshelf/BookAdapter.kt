@@ -14,8 +14,9 @@ class BookAdapter : RecyclerView.Adapter<BookAdapter.BookViewHolder>() {
 
     private var bookList = listOf<BookEntity>()
 
-    // 👇 新增点击事件回调
     var onItemClick: ((BookEntity) -> Unit)? = null
+    // 👇 就是这一行漏了，必须要有它！
+    var onItemLongClick: ((BookEntity) -> Unit)? = null
 
     fun submitList(newList: List<BookEntity>) {
         bookList = newList
@@ -31,9 +32,15 @@ class BookAdapter : RecyclerView.Adapter<BookAdapter.BookViewHolder>() {
         val book = bookList[position]
         holder.bind(book)
 
-        // 👇 绑定点击事件
+        // 点击事件
         holder.itemView.setOnClickListener {
             onItemClick?.invoke(book)
+        }
+
+        // 长按事件
+        holder.itemView.setOnLongClickListener {
+            onItemLongClick?.invoke(book)
+            true
         }
     }
 
